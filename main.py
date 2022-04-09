@@ -1,199 +1,318 @@
+import json
 import time
 import requests
-import schedule
 
-from appium import webdriver
-from appium.webdriver.common.appiumby import AppiumBy
-
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.common.actions import interaction
-from selenium.webdriver.common.actions.action_builder import ActionBuilder
-from selenium.webdriver.common.actions.pointer_input import PointerInput
-
-from selenium.common.exceptions import NoSuchElementException, StaleElementReferenceException, InvalidElementStateException
-
-
-# 支付密码
-PAY_PASSWORD = ''
-# 买菜成功 Bark 推送 (可选)
 BARK_ID = ''
+
+COOKIE = 'DDXQSESSID='
+DDMC_UID = ''
+DEVICE_ID = ''
+DEVICE_TOKEN = ''
 
 
 def init():
-    desired_caps = dict(
-        platformName='Android',
-        platformVersion='9',
-        ensureWebviewsHavePages=True,
-        nativeWebScreenshot=True,
-        unicodeKeyboard=True,
-        resetKeyboard=True,
-        newCommandTimeout=3600,
-        noReset=True,
-        automationName='uiautomator2',
-        appPackage="com.yaya.zone",
-        appActivity="cn.me.android.splash.activity.SplashActivity",
-    )
-    driver = webdriver.Remote('http://localhost:4723/wd/hub', desired_caps)
+    headers = {
+        'Host': 'sunquan.api.ddxq.mobi',
+        'Accept': '*/*',
+        'User-Agent': 'neighborhood/9.49.1 (iPhone; iOS 15.4.1; Scale/3.00)',
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'ddmc-uid': DDMC_UID,
+        'ddmc-city-number': '0101',
+        'ddmc-locale-identifier': 'zh_CN',
+        'ddmc-device-id': DEVICE_ID,
+        'ddmc-device-token': DEVICE_TOKEN,
+        'ddmc-device-name': 'iPhone 12 Pro',
+        'ddmc-device-model': 'iPhone13,3',
+        'ddmc-channel': 'App Store',
+        'ddmc-os-version': '15.4.1',
+        'ddmc-api-version': '9.49.2',
+        'ddmc-build-version': '1221',
+        'ddmc-app-client-id': '1',
+        'ddmc-country-code': 'CN',
+        'ddmc-language-code': 'zh',
+        'Accept-Language': 'zh-Hans-CN;q=1',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Cookie': COOKIE
+    }
 
-    # 跳过开屏广告
-    time.sleep(0.5)
-    try:
-        driver.find_element(value='com.yaya.zone:id/tv_skip').click()
-    except NoSuchElementException:
-        pass
+    params = {
+        "api_version": "9.49.2",
+        "app_version": "1221",
+        'buildVersion': "1221",
+        "app_client_id": "1",
+        'channel': 'App Store',
+        'city_number': '0101',
+        'device_id': DEVICE_ID,
+        'device_model': 'iPhone13,3',
+        'device_name': 'iPhone 12 Pro',
+        'device_token': DEVICE_TOKEN,
+        'os_version': '15.4.1',
+        'uid': DDMC_UID
+    }
+    return headers, params
 
-    # 进入购物车页面
-    while True:
+
+def post_request(url, method, headers, params):
+    for _ in range(20):
+        time.sleep(0.1)
+        if method == 'POST':
+            r = requests.post(url, headers=headers, params=params)
+        else:
+            r = requests.get(url, headers=headers, params=params)
+
+        if r.status_code != 200:
+            print(url, r.status_code, 'ResStatusError!')
+            continue
+
         try:
-            time.sleep(1.0)
-            driver.find_element(value='com.yaya.zone:id/ani_car').click()
+            response = r.json()
+        except json.JSONDecodeError:
+            print(url, 'JSONDecodeError!')
+            continue
+
+        if response['code'] == 0 or response['code'] == 5001: # 5001 预订单
+            return response['data']
+        elif response['code'] == -3000:
+            print(url, 'Busy!')
+            continue
+        elif response['code'] == -3100:
+            print(url, 'DataLoadError')
+            continue
+        elif response['code'] == 5014:
+            print('暂未营业')
+            continue
+        elif response['code'] == 5003:
+            print('送达时间已抢光')
             break
-        except NoSuchElementException:
+        else:
+            print(r.json())
+            print(url, response['code'], 'OtherDataError!')
             continue
-
-    return driver
-
-
-def refresh(driver):
-    try:
-        actions = ActionChains(driver)
-        actions.w3c_actions = ActionBuilder(driver, mouse=PointerInput(interaction.POINTER_TOUCH, 'touch'))
-        actions.w3c_actions.pointer_action.move_to_location(x=600, y=600)
-        actions.w3c_actions.pointer_action.pointer_down()
-        actions.w3c_actions.pointer_action.move_to_location(x=600, y=1500)
-        actions.w3c_actions.pointer_action.release()
-        actions.perform()
-    except InvalidElementStateException:
-        return
+    else:
+        return {}
 
 
-def cart(driver):
-    # 防止异常返回，确保在购物车页
-    try:
-        driver.find_element(value='com.yaya.zone:id/ani_car').click()
-    except (NoSuchElementException, StaleElementReferenceException):
-        pass
-
-    # 进入结算页面
-    while True:
-        try:
-            driver.find_element(value='com.yaya.zone:id/btn_submit').click()
-            time.sleep(0.2)
-            elements = driver.find_elements(by=AppiumBy.CLASS_NAME, value='android.widget.TextView')
-            if len(elements) > 0 and elements[0].get_attribute('text') == '确认订单':
-                break
-
-            elements = driver.find_elements(value='com.yaya.zone:id/tv_refresh')
-            if len(elements) > 0:
-                break
-
-        except NoSuchElementException: # 购物车为空，刷新
-            refresh(driver)
+def get_addresses(headers, params):
+    ret = post_request(url='https://sunquan.api.ddxq.mobi/api/v1/user/address/', method='GET', headers=headers, params=params)
+    if 'valid_address' in ret:
+        return ret['valid_address']
+    else:
+        return []
 
 
-def order(driver):
-    while True:
-        # 等待进入
-        elements = driver.find_elements(value='com.yaya.zone:id/tv_refresh')
-        if len(elements) > 0:
-            elements[0].click()
-            continue
+def get_cart_products(headers, params):
+    ret = post_request(url='https://maicai.api.ddxq.mobi/cart/index', method='POST', headers=headers, params={**params, **{
+        'is_load': 1,
+        'ab_config': '{"key_no_condition_barter":false,"key_show_cart_barter":"0","key_cart_discount_price":"C"}'
+    }})
+    return ret
 
-        # 取消优惠券，余额支付和优惠券不能共享
-        # try:
-        #     elements = driver.find_elements(value='com.yaya.zone:id/couponMessage') # tv_coupon_tick
-        #     if len(elements) > 0 and elements[0].get_attribute('text') == '已选最大优惠':
-        #         elements[0].click()
-        #         time.sleep(0.2)
-        #         checkbox_elements = driver.find_elements(by=AppiumBy.CLASS_NAME, value='android.widget.CheckBox')
-        #         if len(checkbox_elements) > 0 and checkbox_elements[0].get_attribute('checked'):
-        #             checkbox_elements[0].click()
-        #         sure_elements = driver.find_elements(value='com.yaya.zone:id/tv_coupon_sure')
-        #         if len(sure_elements) > 0:
-        #             sure_elements[0].click()
-        #         time.sleep(0.2)
-        # except StaleElementReferenceException:
-        #     pass
 
-        # 立即支付
-        try:
-            pay_btns = driver.find_elements(value='com.yaya.zone:id/tv_submit')
-            if len(pay_btns) > 0:
-                pay_btns[0].click()
-                continue # 连击
-        except StaleElementReferenceException:
-            continue
+def check_order(headers, params, products):
+    packages = {
+        'package_type': 1,
+        'package_id': 1,
+        'products': products,
+    },
 
-        # 输入密码
-        elements = driver.find_elements(value='com.yaya.zone:id/passEditText')
-        if len(elements) > 0:
-            elements[0].send_keys(PAY_PASSWORD)
-            continue
+    ret = post_request(url='https://maicai.api.ddxq.mobi/order/checkOrder', method='POST', headers=headers, params={**params, **{
+        'check_order_type': '0',
+        'user_ticket_id': 'default',
+        'freight_ticket_id': 'default',
+        'is_use_point': '0',
+        'is_use_balance': '0',
+        'is_buy_vip': '0',
+        'is_buy_coupons': '0',
+        'coupons_id': '',
+        'packages': json.dumps(packages),
+    }})
 
-        # 缺货继续支付
-        elements = driver.find_elements(value='com.yaya.zone:id/tv_goto_pay')
-        if len(elements) > 0:
-            # 商品金额
-            money_elements = driver.find_elements(value='com.yaya.zone:id/tv_new_money')
-            if len(money_elements) > 0:
-                # 在此可以根据金额决定是否继续支付
-                print(money_elements[0].get_attribute('text'))
+    if 'order' in ret:
+        return ret['order']
+    else:
+        return {}
 
-            elements[0].click()
-            continue
 
-        # 下单失败
-        elements = driver.find_elements(value='com.yaya.zone:id/button_one')
-        if len(elements) > 0:
-            elements[0].click()
-            refresh(driver)
-            return
+def get_multi_reserve_time(headers, params, products):
+    ret = post_request(url='https://maicai.api.ddxq.mobi/order/getMultiReserveTime', method='POST', headers=headers, params={**params, **{
+        'products': json.dumps([products])
+    }})
+    return ret
 
-        # 选择送达时间
-        if len(driver.find_elements(value='com.yaya.zone:id/tv_dialog_select_time_title')) > 0:
-            elements = driver.find_elements(value='com.yaya.zone:id/cl_item_select_hour_root')         
-            for element in elements:
-                # title = element.find_element(value='com.yaya.zone:id/tv_item_select_hour_title')
-                desc = element.find_element(value='com.yaya.zone:id/tv_item_select_hour_desc')
-                if desc.get_attribute('text') != '已约满':
-                    element.click()
-                    break
-            else:
-                # 预约时间已满
-                driver.find_element(value='com.yaya.zone:id/iv_dialog_select_time_close').click()
-                while True:
-                    try:
-                        driver.find_element(value='com.yaya.zone:id/iv_order_back').click()
-                    except (NoSuchElementException, StaleElementReferenceException):
-                        break
-                refresh(driver)
-                return
 
-        # 支付成功
-        elements = driver.find_elements(value='com.yaya.zone:id/tv_state_lable')
-        elements = [e for e in elements if e.get_attribute('text') == '支付成功']
-        if len(elements) > 0:
-            if BARK_ID:
-                requests.get(url = f'https://api.day.app/{BARK_ID}/叮咚买菜/买到了！' + '?sound=calypso&level=timeSensitive')
-            exit()
+def add_new_order(headers, params, order, address, cart_info, order_products, reserve_time):
+    package_order = {
+        'packages': [{
+            'first_selected_big_time': '1',
+            'products': order_products,
+            'eta_trace_id': '',
+            'package_id': 1,
+            'package_type': '1',
+            'reserved_time_start': reserve_time['start_timestamp'],
+            'reserved_time_end': reserve_time['end_timestamp'],
+            'soon_arrival': 0,
+        }],
+        'payment_order': {
+            'reserved_time_start': reserve_time['start_timestamp'],
+            'reserved_time_end': reserve_time['end_timestamp'],
+            'freight_discount_money': order['freight_discount_money'],
+            'freight_money': order['freight_money'],
+            'order_freight': '0.00', # 运费
+            'address_id': address['id'],
+            'used_point_num': 0,
+            'is_use_balance': 0, # 余额
+            'order_type': 1,
+            'pay_type': 2, # 支付宝
+            'parent_order_sign': cart_info['parent_order_info']['parent_order_sign'],
+            'receipt_without_sku': '0',
+            'price': order['total_money'],
+            # 'current_position', '',
+        }
+    }
+
+    ret = post_request(url='https://maicai.api.ddxq.mobi/order/addNewOrder', method='POST', headers=headers, params={**params, **{
+        'ab_config': '{"key_no_condition_barter":false}',
+        'package_order': json.dumps(package_order),
+        'clientDetail': {},
+    }})
+    return ret
 
 
 def job():
-    driver = init()
-    # 每十次重新启动 App
-    for _ in range(10):
-        cart(driver)
-        order(driver)
-    driver.quit()
 
+    headers, params = init()
 
-if __name__ == "__main__":
-    # 准备六点时段
-    schedule.every().day.at('05:55').do(job)
+    addresses = get_addresses(headers, params)
+
+    if len(addresses) == 0:
+        print('未查询到有效收货地址，请前往 App 添加或检查 cookie 是否正确！')
+        exit()
+
+    print('########## 选择收货地址 ##########')
+    for idx, address in enumerate(addresses):
+        print(idx, address['location']['name'])
+
+    if len(addresses) == 1:
+        address_no = 0
+    else:
+        address_no = input('请输入地址序号（0, 1, 2...): ')
+
+        if address_no.isdigit and 0 <= int(address_no) < len(addresses):
+            address_no = int(address_no)
+        else:
+            print('输入范围不正确')
+            exit(0)
+
+    address = addresses[address_no]
+
+    params = {**params, **{
+        'ab_config': '{"ETA_time_default_selection":"B1.2"}',
+        'city_number': address['city_number'],
+        'station_id': address['station_id'],
+        'address_id': address['id'],
+    }}
+
+    headers = {**headers, **{
+        'Host': 'maicai.api.ddxq.mobi',
+        'ddmc-city-number': address['city_number'],
+        'ddmc-station-id': address['station_id'],
+    }}
 
     while True:
-        # 立即运行
+
+        time.sleep(0.8)
+
+        print('########## 有效商品列表 ###########')
+        cart_info = get_cart_products(headers=headers, params=params)
+        if not cart_info:
+            continue
+        
+        if len(cart_info['product']['effective']) > 0:
+            products =  cart_info['product']['effective'][0]['products'] # 所有有效商品（不包括换购）
+        elif 'new_order_product_list' in cart_info and len(cart_info['new_order_product_list']) > 0:
+            products = cart_info['new_order_product_list'][0]['products'] # 所有勾选商品（包括换购)
+        else:
+            products = []
+
+        if len(products) == 0:
+            print('购物车中无有效商品，请先前往 App 添加并勾选！')
+            exit()
+        else:
+            for product in products:
+                print(product['product_name'])
+
+        order_products = []
+        for product in products:
+            # order_sort sale_batches type 'category_path', 'price_type' 'activity_id', 'conditions_num'
+            order_product = {k: product[k] for k in ['id', 'count', 'price', 'origin_price', 'sizes']}
+            order_product['total_money'] = product['total_price']
+            # order_product['is_coupon_gift'] = 0
+            # order_product['batch_type'] = -1
+
+            if 'total_origin_price' in product:
+                order_product['total_origin_money'] = product['total_origin_price']
+            else:
+                order_product['total_origin_money'] = product['origin_price']
+                
+            if 'instant_rebate_money' in product:
+                order_product['instant_rebate_money'] = product['instant_rebate_money']
+            else:
+                order_product['instant_rebate_money'] = '0.00'
+
+            # if 'product_type' in product:
+            #     order_product['product_type'] = product['product_type']
+            # # else:
+            # #     order_product['product_type'] = 0
+            
+            # if 'order_sort' in product:
+            #     order_product['order_sort'] = product['order_sort']
+            # else:
+            #     order_product['order_sort'] = 0
+            
+            # if 'sale_batches' in product:
+            #     order_product['sale_batches'] = product['sale_batches']
+            # else:
+            #     order_product['sale_batches'] = 0
+
+            order_products.append(order_product)
+
+        time.sleep(0.8)
+
+        print('########## 生成订单信息 ###########')
+        order = check_order(headers=headers, params=params, products=order_products)
+        if not order:
+            continue
+        print('订单总金额：', order['total_money'])
+
+        time.sleep(0.8)
+        print('########## 获取预约时间 ###########')
+        reserve_times = get_multi_reserve_time(headers, params, order_products)
+        if not reserve_times:
+            continue
+        reserve_times = reserve_times[0]['time'][0]['times']
+        reserve_times = [t for t in reserve_times if t['disableType'] == 0]
+
+        if len(reserve_times) == 0:
+            print('暂无可预约时间')
+            continue
+        else:
+            for t in reserve_times:
+                print(t['arrival_time_msg'])
+            reserve_time = reserve_times[0]
+
+        time.sleep(1)
+        print('########## 立即支付购买 ###########')
+
+        new_order = add_new_order(headers=headers, params=params, order=order, address=address, cart_info=cart_info, order_products=order_products, reserve_time=reserve_time)
+        if not new_order:
+            continue
+        print(new_order)
+
+        if BARK_ID:
+            requests.get(url = f'https://api.day.app/{BARK_ID}/叮咚买菜/买到了！' + '?sound=calypso&level=timeSensitive')
+
+        exit()
+
+if __name__ == "__main__":
+    while True:
         job()
-        # 定时运行
-        # schedule.run_pending()
-        time.sleep(0.1)
