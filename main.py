@@ -1,13 +1,36 @@
 import json
 import time
 import requests
+import argparse
+import datetime
 
-BARK_ID = ''
 
-COOKIE = 'DDXQSESSID='
-DDMC_UID = ''
-DEVICE_ID = ''
-DEVICE_TOKEN = ''
+parser = argparse.ArgumentParser()
+
+parser.add_argument('-u', '--user', default='default', help='load user config')
+parser.add_argument('-d', '--device', default='default', help='load device config')
+parser.add_argument('-b', '--bark', default='default', help='load bark config')
+
+args = parser.parse_args()
+
+with open(f'config/user.{args.user}.json', 'r') as f:
+    user_config = json.load(f)
+
+with open(f'config/device.{args.device}.json', 'r') as f:
+    device_config = json.load(f)
+
+with open(f'config/bark.{args.bark}.json', 'r') as f:
+    bark_config = json.load(f)
+
+
+BARK_ID = bark_config['BARK_ID']
+
+COOKIE = user_config['COOKIE']
+DDMC_UID = user_config['DDMC_UID']
+DEFAULT_ADDR_NO = user_config['DEFAULT_ADDR_NO']
+
+DEVICE_ID = device_config['DEVICE_ID']
+DEVICE_TOKEN = device_config['DEVICE_TOKEN']
 
 
 def init():
@@ -78,12 +101,14 @@ def post_request(url, method, headers, params):
         elif response['code'] == -3100:
             print(url, 'DataLoadError')
             continue
-        elif response['code'] == 5014:
-            print('暂未营业')
-            continue
         elif response['code'] == 5003:
             print('送达时间已抢光')
             break
+        elif response['code'] == 5014:
+            print('暂未营业，等待开放')
+            while datetime.datetime.now() < datetime.datetime.now().replace(hour=5, minute=57, second=0, microsecond=0):
+                time.sleep(1)
+            continue
         else:
             print(r.json())
             print(url, response['code'], 'OtherDataError!')
@@ -189,11 +214,17 @@ def job():
         exit()
 
     print('########## 选择收货地址 ##########')
+
     for idx, address in enumerate(addresses):
-        print(idx, address['location']['name'])
+        if idx == DEFAULT_ADDR_NO:
+            print('*', idx, address['location']['name'])
+        else:
+            print(idx, address['location']['name'])
 
     if len(addresses) == 1:
         address_no = 0
+    elif 0 <= DEFAULT_ADDR_NO < len(addresses):
+        address_no = DEFAULT_ADDR_NO
     else:
         address_no = input('请输入地址序号（0, 1, 2...): ')
 
@@ -236,7 +267,8 @@ def job():
 
         if len(products) == 0:
             print('购物车中无有效商品，请先前往 App 添加并勾选！')
-            exit()
+            time.sleep(30)
+            continue
         else:
             for product in products:
                 print(product['product_name'])
@@ -309,9 +341,10 @@ def job():
         print(new_order)
 
         if BARK_ID:
-            requests.get(url = f'https://api.day.app/{BARK_ID}/叮咚买菜/买到了！' + '?sound=calypso&level=timeSensitive')
+            requests.get(url = f'https://api.day.app/{BARK_ID}/叮咚买菜/{args.user} 买到了！' + '?sound=minuet&level=timeSensitive')
 
         exit()
+
 
 if __name__ == "__main__":
     while True:
