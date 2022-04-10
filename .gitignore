@@ -1,0 +1,9 @@
+# General
+.DS_Store
+.AppleDouble
+.LSOverride
+
+config/*.json
+!config/bark.default.json
+!config/user.default.json
+!config/device.default.json
