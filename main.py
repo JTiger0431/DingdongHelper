@@ -13,8 +13,12 @@ from selenium.webdriver.common.actions.pointer_input import PointerInput
 from selenium.common.exceptions import NoSuchElementException, StaleElementReferenceException, InvalidElementStateException
 
 
+# 通过 adb devices 查询设备名
+DEVICE_NAME = ''
+
 # 支付密码
 PAY_PASSWORD = ''
+
 # 买菜成功 Bark 推送 (可选)
 BARK_ID = ''
 
@@ -29,6 +33,7 @@ def init():
         resetKeyboard=True,
         newCommandTimeout=3600,
         noReset=True,
+        deviceName=DEVICE_NAME,
         automationName='uiautomator2',
         appPackage="com.yaya.zone",
         appActivity="cn.me.android.splash.activity.SplashActivity",
