@@ -76,8 +76,8 @@ def init():
 
 
 def post_request(url, method, headers, params):
-    for _ in range(20):
-        time.sleep(0.1)
+    for _ in range(100):
+        time.sleep(0.5)
         if method == 'POST':
             r = requests.post(url, headers=headers, params=params)
         else:
@@ -93,28 +93,30 @@ def post_request(url, method, headers, params):
             print(url, 'JSONDecodeError!')
             continue
 
-        if response['code'] == 0 or response['code'] == 5001: # 5001 预订单
+        if response['code'] in [0, 5010, 5001, 6001]: # 5001 有商品缺货 6001 获取支付参数失败
             return response['data']
-        elif response['code'] == -3000:
-            print(url, 'Busy!')
+        elif response['code'] == -3000: # 购物车
+            print(url, '当前人多拥挤，请稍后尝试刷新页')
             continue
-        elif response['code'] == -3100:
-            print(url, 'DataLoadError')
+        elif response['code'] == -3100: # 生成订单
+            print(url, '当前页面拥挤，部分数据加载失败')
             continue
+        elif response['code'] == -3001: # 下单支付
+            print(url, '前方拥挤，请稍后再试...')
         elif response['code'] == 5003:
-            print('送达时间已抢光')
+            print(url, '送达时间已抢光')
             break
         elif response['code'] == 5014:
-            print('暂未营业，等待开放')
+            print(url, '暂未营业，等待开放')
             while datetime.datetime.now() < datetime.datetime.now().replace(hour=5, minute=57, second=0, microsecond=0):
                 time.sleep(1)
             continue
         else:
-            print(r.json())
+            print(response)
             print(url, response['code'], 'OtherDataError!')
             continue
-    else:
-        return {}
+
+    return {}
 
 
 def get_addresses(headers, params):
@@ -251,7 +253,7 @@ def job():
 
     while True:
 
-        time.sleep(0.8)
+        time.sleep(0.5)
 
         print('########## 有效商品列表 ###########')
         cart_info = get_cart_products(headers=headers, params=params)
@@ -267,7 +269,7 @@ def job():
 
         if len(products) == 0:
             print('购物车中无有效商品，请先前往 App 添加并勾选！')
-            time.sleep(30)
+            time.sleep(1)
             continue
         else:
             for product in products:
@@ -278,8 +280,6 @@ def job():
             # order_sort sale_batches type 'category_path', 'price_type' 'activity_id', 'conditions_num'
             order_product = {k: product[k] for k in ['id', 'count', 'price', 'origin_price', 'sizes']}
             order_product['total_money'] = product['total_price']
-            # order_product['is_coupon_gift'] = 0
-            # order_product['batch_type'] = -1
 
             if 'total_origin_price' in product:
                 order_product['total_origin_money'] = product['total_origin_price']
@@ -300,15 +300,10 @@ def job():
             #     order_product['order_sort'] = product['order_sort']
             # else:
             #     order_product['order_sort'] = 0
-            
-            # if 'sale_batches' in product:
-            #     order_product['sale_batches'] = product['sale_batches']
-            # else:
-            #     order_product['sale_batches'] = 0
 
             order_products.append(order_product)
 
-        time.sleep(0.8)
+        time.sleep(0.5)
 
         print('########## 生成订单信息 ###########')
         order = check_order(headers=headers, params=params, products=order_products)
@@ -316,7 +311,7 @@ def job():
             continue
         print('订单总金额：', order['total_money'])
 
-        time.sleep(0.8)
+        time.sleep(0.5)
         print('########## 获取预约时间 ###########')
         reserve_times = get_multi_reserve_time(headers, params, order_products)
         if not reserve_times:
@@ -332,7 +327,7 @@ def job():
                 print(t['arrival_time_msg'])
             reserve_time = reserve_times[0]
 
-        time.sleep(1)
+        time.sleep(0.5)
         print('########## 立即支付购买 ###########')
 
         new_order = add_new_order(headers=headers, params=params, order=order, address=address, cart_info=cart_info, order_products=order_products, reserve_time=reserve_time)
