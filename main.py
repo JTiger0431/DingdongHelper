@@ -167,8 +167,8 @@ def get_multi_reserve_time(headers, params, products):
     return ret
 
 
-def add_new_order(headers, params, order, address, cart_info, order_products, reserve_time):
-    package_order = {
+def add_new_order(headers, params, order=None, address=None, cart_info=None, order_products=None, reserve_time=None, package_order=None):
+    package_order = package_order or {
         'packages': [{
             'first_selected_big_time': '1',
             'products': order_products,
@@ -335,10 +335,18 @@ def job():
             continue
         print(new_order)
 
-        if BARK_ID:
-            requests.get(url = f'https://api.day.app/{BARK_ID}/叮咚买菜/{args.user} 买到了！' + '?sound=minuet&level=timeSensitive')
+        # 部分缺货
+        tries_cnt = 0
+        while new_order and 'stockout_products' in new_order and tries_cnt < 3:
+            new_order = add_new_order(headers=headers, params=params, package_order=new_order['package_order'])
+            tries_cnt += 1
+            print('#', tries_cnt, new_order)
 
-        exit()
+        if new_order and 'order_number' in new_order:
+            print('########## 下单成功 ###########')
+            if BARK_ID:
+                requests.get(url = f'https://api.day.app/{BARK_ID}/叮咚买菜/{args.user} 买到了！' + '?sound=minuet&level=timeSensitive')
+            exit()
 
 
 if __name__ == "__main__":
