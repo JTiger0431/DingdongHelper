@@ -76,7 +76,7 @@ def init():
 
 
 def post_request(url, method, headers, params):
-    for _ in range(100):
+    for _ in range(200):
         time.sleep(0.5)
         if method == 'POST':
             r = requests.post(url, headers=headers, params=params)
@@ -106,6 +106,9 @@ def post_request(url, method, headers, params):
         elif response['code'] == 5003:
             print(url, '送达时间已抢光')
             break
+        elif response['code'] == 5004:
+            print(url, '您选择的送达时间已经失效了')
+            break
         elif response['code'] == 5014:
             print(url, '暂未营业，等待开放')
             while datetime.datetime.now() < datetime.datetime.now().replace(hour=5, minute=57, second=0, microsecond=0):
@@ -114,7 +117,7 @@ def post_request(url, method, headers, params):
         else:
             print(response)
             print(url, response['code'], 'OtherDataError!')
-            continue
+            break
 
     return {}
 
@@ -215,7 +218,7 @@ def job():
         print('未查询到有效收货地址，请前往 App 添加或检查 cookie 是否正确！')
         exit()
 
-    print('########## 选择收货地址 ##########')
+    print('########## 选择收货地址 ##########', datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), '##########')
 
     for idx, address in enumerate(addresses):
         if idx == DEFAULT_ADDR_NO:
@@ -251,11 +254,15 @@ def job():
         'ddmc-station-id': address['station_id'],
     }}
 
+    while datetime.datetime.now() < datetime.datetime.now().replace(hour=5, minute=55, second=0, microsecond=0):
+        time.sleep(1)
+        print(f'\r########## 等待营业 ########## {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")} ##########', end='')
+
     while True:
 
-        time.sleep(0.5)
+        time.sleep(3)
 
-        print('########## 有效商品列表 ###########')
+        print('########## 有效商品列表 ##########', datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), '##########')
         cart_info = get_cart_products(headers=headers, params=params)
         if not cart_info:
             continue
@@ -269,7 +276,7 @@ def job():
 
         if len(products) == 0:
             print('购物车中无有效商品，请先前往 App 添加并勾选！')
-            time.sleep(1)
+            time.sleep(3)
             continue
         else:
             for product in products:
@@ -305,14 +312,14 @@ def job():
 
         time.sleep(0.5)
 
-        print('########## 生成订单信息 ###########')
+        print('########## 生成订单信息 ##########', datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), '##########')
         order = check_order(headers=headers, params=params, products=order_products)
         if not order:
             continue
         print('订单总金额：', order['total_money'])
 
         time.sleep(0.5)
-        print('########## 获取预约时间 ###########')
+        print('########## 获取预约时间 ##########', datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), '##########')
         reserve_times = get_multi_reserve_time(headers, params, order_products)
         if not reserve_times:
             continue
@@ -328,7 +335,11 @@ def job():
             reserve_time = reserve_times[0]
 
         time.sleep(0.5)
-        print('########## 立即支付购买 ###########')
+
+        while datetime.datetime.now() < datetime.datetime.now().replace(hour=6, minute=0, second=0, microsecond=0):
+            time.sleep(0.01)
+
+        print('########## 立即支付购买 ##########', datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), '##########')
 
         new_order = add_new_order(headers=headers, params=params, order=order, address=address, cart_info=cart_info, order_products=order_products, reserve_time=reserve_time)
         if not new_order:
@@ -343,7 +354,7 @@ def job():
             print('#', tries_cnt, new_order)
 
         if new_order and 'order_number' in new_order:
-            print('########## 下单成功 ###########')
+            print('########## 下单成功 ##########', datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), '##########')
             if BARK_ID:
                 requests.get(url = f'https://api.day.app/{BARK_ID}/叮咚买菜/{args.user} 买到了！' + '?sound=minuet&level=timeSensitive')
             exit()
